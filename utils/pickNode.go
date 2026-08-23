@@ -25,12 +25,12 @@ func (t FiveTuple) Hash() uint32 {
 	return h.Sum32()
 }
 
-func PickNode(tuple FiveTuple, nodes []string) string {
-	if len(nodes) == 0 {
+func SelectBackend(tuple FiveTuple, backends []string) string {
+	if len(backends) == 0 {
 		return ""
 	}
 
 	hashVal := tuple.Hash()
-	selectedIdx := hashVal % uint32(len(nodes))
-	return nodes[selectedIdx]
+	selectedIdx := hashVal % uint32(len(backends))
+	return backends[selectedIdx]
 }
