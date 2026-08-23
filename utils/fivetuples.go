@@ -2,7 +2,8 @@ package utils
 
 import (
 	"net"
-	"net/http"
+	"strconv"
+	"strings"
 )
 
 type Protocol uint8
@@ -20,33 +21,37 @@ type FiveTuple struct {
 	Protocol Protocol
 }
 
-func GetFiveTuple(r *http.Request) (FiveTuple, error) {
-	host, port, err := net.SplitHostPort(r.RemoteAddr)
+func GetFiveTuple(conn net.Conn) (FiveTuple, error) {
+	srcHost, srcPortStr, err := net.SplitHostPort(conn.RemoteAddr().String())
 	if err != nil {
 		return FiveTuple{}, err
 	}
 
-	srcPort, err := net.LookupPort("tcp", port)
+	srcPort, err := strconv.ParseUint(srcPortStr, 10, 16)
 	if err != nil {
 		return FiveTuple{}, err
 	}
 
-	localAddr := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
-	localHost, localPort, err := net.SplitHostPort(localAddr.String())
+	dstHost, dstPortStr, err := net.SplitHostPort(conn.LocalAddr().String())
 	if err != nil {
 		return FiveTuple{}, err
 	}
 
-	dstPort, err := net.LookupPort("tcp", localPort)
+	dstPort, err := strconv.ParseUint(dstPortStr, 10, 16)
 	if err != nil {
 		return FiveTuple{}, err
+	}
+
+	protocol := TCP
+	if strings.HasPrefix(conn.RemoteAddr().Network(), "udp") {
+		protocol = UDP
 	}
 
 	return FiveTuple{
-		SrcIP:    net.ParseIP(host),
-		DstIP:    net.ParseIP(localHost),
+		SrcIP:    net.ParseIP(srcHost),
+		DstIP:    net.ParseIP(dstHost),
 		SrcPort:  uint16(srcPort),
 		DstPort:  uint16(dstPort),
-		Protocol: TCP,
+		Protocol: protocol,
 	}, nil
 }
