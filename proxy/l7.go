@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 
@@ -32,6 +33,26 @@ func NewL7Proxy(pool *backend.ServerPool) *L7Proxy {
 				req.URL.Host = selectedBackend.URL.Host
 				if req.URL.Host == "" {
 					req.URL.Host = selectedBackend.Addr
+				}
+
+				req.Header.Del("X-Forwarded-For")
+				req.Header.Del("X-Forwarded-Host")
+				req.Header.Del("X-Forwarded-Proto")
+				req.Header.Del("X-Internal-Secret")
+				req.Header.Del("Server")
+
+				clientIP, _, err := net.SplitHostPort(req.RemoteAddr)
+				if err == nil {
+					req.Header.Set("X-Forwarded-For", clientIP)
+				} else {
+					req.Header.Set("X-Forwarded-For", req.RemoteAddr)
+				}
+				
+				req.Header.Set("X-Forwarded-Host", req.Host)
+				if req.TLS != nil {
+					req.Header.Set("X-Forwarded-Proto", "https")
+				} else {
+					req.Header.Set("X-Forwarded-Proto", "http")
 				}
 
 				log.Printf("L7 Proxy routing %s -> %s", req.URL.Path, req.URL.Host)
