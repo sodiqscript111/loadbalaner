@@ -127,7 +127,7 @@ func main() {
 }
 
 func startL7Proxy(cfg *config.Config, pool *backend.ServerPool) {
-	l7proxy := proxy.NewL7Proxy(pool)
+	l7proxy := proxy.NewL7Proxy(pool, cfg)
 	server := &http.Server{
 		Addr:    cfg.Port,
 		Handler: l7proxy,

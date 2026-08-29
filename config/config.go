@@ -9,18 +9,20 @@ import (
 type Config struct {
 	Mode     string
 	Port     string
-	Backends []string
-	TLSCert  string
-	TLSKey   string
+	Backends   []string
+	TLSCert    string
+	TLSKey     string
+	MaxRetries int
 }
 
 func ParseFlags() (*Config, error) {
 	var (
 		mode     = flag.String("mode", "l4", "Run mode: 'l4' or 'l7'")
 		port     = flag.String("port", ":8080", "Listen port (e.g., :8080)")
-		backends = flag.String("backends", "127.0.0.1:8081", "Comma-separated list of backend addresses")
-		tlsCert  = flag.String("tls-cert", "", "Path to TLS certificate file")
-		tlsKey   = flag.String("tls-key", "", "Path to TLS private key file")
+		backends   = flag.String("backends", "127.0.0.1:8081", "Comma-separated list of backend addresses")
+		tlsCert    = flag.String("tls-cert", "", "Path to TLS certificate file")
+		tlsKey     = flag.String("tls-key", "", "Path to TLS private key file")
+		maxRetries = flag.Int("max-retries", 3, "Maximum number of retries for failed requests")
 	)
 
 	flag.Parse()
@@ -47,7 +49,8 @@ func ParseFlags() (*Config, error) {
 		Mode:     m,
 		Port:     *port,
 		Backends: parsedBackends,
-		TLSCert:  *tlsCert,
-		TLSKey:   *tlsKey,
+		TLSCert:    *tlsCert,
+		TLSKey:     *tlsKey,
+		MaxRetries: *maxRetries,
 	}, nil
 }

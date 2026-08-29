@@ -7,6 +7,7 @@ import (
 	"net/http/httputil"
 
 	"loadbalancer/backend"
+	"loadbalancer/config"
 	"loadbalancer/utils"
 )
 
@@ -15,11 +16,9 @@ type L7Proxy struct {
 	proxy *httputil.ReverseProxy
 }
 
-func NewL7Proxy(pool *backend.ServerPool) *L7Proxy {
-	return &L7Proxy{
-		pool: pool,
-		proxy: &httputil.ReverseProxy{
-			Director: func(req *http.Request) {
+func NewL7Proxy(pool *backend.ServerPool, cfg *config.Config) *L7Proxy {
+	reverseProxy := &httputil.ReverseProxy{
+		Director: func(req *http.Request) {
 				selectedBackend := utils.SelectRoundRobinHealthyBackend(pool)
 				if selectedBackend == nil {
 					log.Printf("No healthy backends available to serve L7 request for %s", req.URL.Path)
@@ -62,7 +61,17 @@ func NewL7Proxy(pool *backend.ServerPool) *L7Proxy {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = w.Write([]byte("Service Unavailable"))
 			},
-		},
+		}
+
+	reverseProxy.Transport = &RetryTransport{
+		Pool:       pool,
+		MaxRetries: cfg.MaxRetries,
+		Transport:  http.DefaultTransport,
+	}
+
+	return &L7Proxy{
+		pool:  pool,
+		proxy: reverseProxy,
 	}
 }
 
