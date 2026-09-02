@@ -12,6 +12,7 @@ A high-performance, multi-tier load balancer written in Go. This project is desi
   - L7 uses Round-Robin selection.
 - **Resilience and Circuit Breaking:** The L7 proxy includes a custom transport that catches backend failures mid-flight, marks the backend as down, and silently retries the request on a healthy server.
 - **Header Sterilization:** Automatically strips internal and potentially malicious headers from client requests while injecting verified X-Forwarded-For headers.
+- **Wait-Free Concurrency:** Implements a Left-Right (Double-Buffered) server pool pattern, ensuring that millions of concurrent read requests are never blocked or delayed, even when health checkers actively add or remove backends in the background.
 - **High Performance:** Utilizes sync.Pool for byte buffers in L4 mode to drastically reduce garbage collection overhead and memory allocation during heavy TCP traffic.
 
 ## Architecture and Scalability
@@ -19,6 +20,12 @@ A high-performance, multi-tier load balancer written in Go. This project is desi
 This load balancer is designed for scalability. A common bottleneck in web infrastructure is the Layer 7 proxy itself, as parsing HTTP headers and terminating TLS can be CPU-intensive.
 
 To solve this, this project allows you to deploy an L4 Load Balancer at the edge of your network. This L4 instance simply forwards TCP packets at extremely high speeds to a pool of L7 instances. The L7 instances then handle the heavy lifting (TLS termination, header manipulation, retries) before passing the traffic to your backend application servers.
+
+### Concurrency Model
+
+A major challenge for load balancers is dealing with massive read concurrency while background tasks (like health checks or admin scaling) modify the server pool. Using a standard `sync.RWMutex` causes severe latency spikes whenever a write occurs.
+
+This project solves this by using a **Left-Right Wait-Free Pattern**. The server pool maintains two identical lists of the active servers. Incoming user traffic reads from the "active" list without requiring *any* locks. When a server goes down, the background health checker mutates the "inactive" list, atomically flips a pointer to make it the new active list, and waits for the old readers to drain. This ensures that high-volume traffic is never halted by internal state changes.
 
 ## Usage
 

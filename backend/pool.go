@@ -1,44 +1,63 @@
 package backend
 
 import (
+	"runtime"
 	"sync"
+	"sync/atomic"
 )
 
-// ServerPool holds a collection of backends and coordinates their access.
 type ServerPool struct {
-	mu       sync.RWMutex
-	backends []*Backend
+	backends     [2][]*Backend
+	readCounters [2]atomic.Int32
+	activeIndex  atomic.Int32
+	writerMutex  sync.Mutex
 }
 
-// NewServerPool creates an empty ServerPool.
 func NewServerPool() *ServerPool {
 	return &ServerPool{
-		backends: make([]*Backend, 0),
+		backends: [2][]*Backend{
+			make([]*Backend, 0),
+			make([]*Backend, 0),
+		},
 	}
 }
 
-// AddBackend adds a backend to the pool.
 func (p *ServerPool) AddBackend(b *Backend) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.backends = append(p.backends, b)
+	p.writerMutex.Lock()
+	defer p.writerMutex.Unlock()
+
+	active := p.activeIndex.Load()
+	inactive := 1 - active
+
+	p.backends[inactive] = make([]*Backend, len(p.backends[active]), len(p.backends[active])+1)
+	copy(p.backends[inactive], p.backends[active])
+
+	p.backends[inactive] = append(p.backends[inactive], b)
+
+	p.activeIndex.Store(inactive)
+
+	for p.readCounters[active].Load() > 0 {
+		runtime.Gosched()
+	}
 }
 
-// GetBackends returns all backends in the pool.
 func (p *ServerPool) GetBackends() []*Backend {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	copied := make([]*Backend, len(p.backends))
-	copy(copied, p.backends)
+	active := p.activeIndex.Load()
+	p.readCounters[active].Add(1)
+	defer p.readCounters[active].Add(-1)
+
+	copied := make([]*Backend, len(p.backends[active]))
+	copy(copied, p.backends[active])
 	return copied
 }
 
-// GetAliveBackends returns only the healthy backends.
 func (p *ServerPool) GetAliveBackends() []*Backend {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	active := p.activeIndex.Load()
+	p.readCounters[active].Add(1)
+	defer p.readCounters[active].Add(-1)
+
 	var alive []*Backend
-	for _, b := range p.backends {
+	for _, b := range p.backends[active] {
 		if b.IsAlive() {
 			alive = append(alive, b)
 		}
@@ -46,19 +65,20 @@ func (p *ServerPool) GetAliveBackends() []*Backend {
 	return alive
 }
 
-// GetBackendCount returns the total number of backends.
 func (p *ServerPool) GetBackendCount() int {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return len(p.backends)
+	active := p.activeIndex.Load()
+	p.readCounters[active].Add(1)
+	defer p.readCounters[active].Add(-1)
+	return len(p.backends[active])
 }
 
-// GetAliveCount returns the number of alive backends.
 func (p *ServerPool) GetAliveCount() int {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
+	active := p.activeIndex.Load()
+	p.readCounters[active].Add(1)
+	defer p.readCounters[active].Add(-1)
+
 	count := 0
-	for _, b := range p.backends {
+	for _, b := range p.backends[active] {
 		if b.IsAlive() {
 			count++
 		}
